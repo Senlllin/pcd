@@ -12,6 +12,7 @@ import numpy as np
 import open3d as o3d
 
 
+DEFAULT_INPUT_DIR = Path(r"C:\Users\zccy2\Desktop\1")
 DEFAULT_CATEGORY_ID = "02691156"
 DEFAULT_CATEGORY_NAME = "dougong"
 MIN_VALID_POINTS = 10
@@ -22,8 +23,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Build a PCN-style dataset with partial point clouds."
     )
-    parser.add_argument("--input_dir", required=True, type=Path,
-                        help="Directory containing raw point clouds (non-recursive).")
+    parser.add_argument(
+        "--input_dir",
+        type=Path,
+        default=DEFAULT_INPUT_DIR,
+        help="Directory containing raw point clouds (non-recursive).",
+    )
     parser.add_argument("--output_dir", required=True, type=Path,
                         help="Directory where the PCN dataset root will be created.")
     parser.add_argument("--exts", nargs="*", default=(".pcd", ".ply", ".xyz"),
