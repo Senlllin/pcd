@@ -7,9 +7,10 @@ This module implements the pipeline described in the user instructions:
 2. Randomly down-sample each cloud to keep 80 percent of the points.
 3. Inject uniformly sampled noise worth 10 percent of the original point
    count within the bounding box of the down-sampled cloud.
-4. Persist the processed clouds as ASCII `.ply` files using Open3D.
-5. Rename all resulting `.ply` files to a sequential numeric scheme
-   starting at 1001.
+4. Persist the processed clouds as ASCII `.ply` files using Open3D and
+   convert the original clouds into ASCII `.ply` files as well.
+5. Rename every resulting `.ply` file to a sequential numeric scheme
+   starting at 1001 after shuffling their order.
 
 The implementation is careful to avoid name collisions during the renaming
 phase and exposes a small CLI for convenience.
@@ -21,6 +22,7 @@ import argparse
 import math
 import os
 import pathlib
+import random
 from dataclasses import dataclass
 from typing import List, Sequence
 
@@ -198,19 +200,26 @@ def process_point_cloud(
 def convert_to_ascii_ply(
     source_path: pathlib.Path,
     output_directory: pathlib.Path,
+    suffix: str = "_original",
 ) -> pathlib.Path:
-    """Convert *source_path* to an ASCII `.ply` stored in *output_directory*."""
+    """Convert *source_path* to an ASCII `.ply` stored in *output_directory*.
+
+    ``suffix`` is appended to the original stem prior to adding the ``.ply``
+    extension so the converted file can coexist with other derivatives.
+    """
 
     pcd = _load_point_cloud(source_path)
-    destination = output_directory / f"{source_path.stem}.ply"
+    destination = output_directory / f"{source_path.stem}{suffix}.ply"
     _ensure_ascii_ply(pcd, destination)
     return destination
 
 
 def rename_ply_files(directory: pathlib.Path, start_index: int = 1001) -> List[pathlib.Path]:
-    """Rename every ``.ply`` file in *directory* to a sequential numeric scheme."""
+    """Rename every ``.ply`` file in *directory* to a sequential numeric scheme after shuffling."""
 
-    ply_files = sorted(directory.glob("*.ply"))
+    ply_files = [path for path in directory.glob("*.ply") if path.is_file()]
+    random.shuffle(ply_files)
+
     temporary_paths: List[pathlib.Path] = []
     for idx, path in enumerate(ply_files):
         temp_path = path.with_name(f"__tmp__{idx}__{path.name}")
@@ -235,8 +244,8 @@ def process_directory(
 ) -> ProcessStats:
     """Process every point cloud in *input_dir* according to the pipeline.
 
-    ``convert_originals`` controls whether non-``.ply`` files are converted to
-    ASCII ``.ply`` files alongside the processed versions before the final
+    ``convert_originals`` controls whether every original file is converted to
+    an ASCII ``.ply`` alongside the processed versions before the final
     renaming step.
     """
 
@@ -248,7 +257,7 @@ def process_directory(
         try:
             process_point_cloud(file_path, output_dir, sampling_ratio, noise_ratio)
             stats.register_processed()
-            if convert_originals and file_path.suffix.lower() not in {".ply", ".txt"}:
+            if convert_originals:
                 convert_to_ascii_ply(file_path, output_dir)
         except Exception as exc:  # pragma: no cover - defensive programming
             print(f"Skipping '{file_path}': {exc}")
@@ -275,7 +284,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-convert-originals",
         action="store_true",
-        help="Do not convert non-PLY originals into ASCII PLY files",
+        help="Do not convert originals into ASCII PLY files",
     )
     return parser
 
