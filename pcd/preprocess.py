@@ -28,7 +28,7 @@ import numpy as np
 import open3d as o3d
 
 
-DEFAULT_PATTERNS: Sequence[str] = ("*.ply", "*.pcd", "*.xyz", "*.xyzn", "*.xyzrgb")
+DEFAULT_PATTERNS: Sequence[str] = ("*.ply", "*.pcd", "*.xyz", "*.xyzn", "*.xyzrgb", "*.txt")
 
 
 @dataclass
@@ -140,6 +140,31 @@ def _ensure_ascii_ply(pcd: o3d.geometry.PointCloud, destination: pathlib.Path) -
     o3d.io.write_point_cloud(str(destination), pcd, write_ascii=True)
 
 
+def _load_point_cloud(file_path: pathlib.Path) -> o3d.geometry.PointCloud:
+    """Load ``file_path`` into an Open3D ``PointCloud`` instance."""
+
+    if file_path.suffix.lower() == ".txt":
+        try:
+            data = np.loadtxt(file_path)
+        except Exception as exc:  # pragma: no cover - defensive programming
+            raise ValueError(f"Failed to load text point cloud '{file_path}': {exc}") from exc
+
+        if data.ndim == 1:
+            data = np.expand_dims(data, axis=0)
+
+        if data.shape[1] < 3:
+            raise ValueError(
+                f"Text point cloud '{file_path}' must contain at least three columns for XYZ coordinates"
+            )
+
+        points = np.asarray(data[:, :3], dtype=float)
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(points)
+        return pcd
+
+    return o3d.io.read_point_cloud(str(file_path))
+
+
 def process_point_cloud(
     file_path: pathlib.Path,
     output_directory: pathlib.Path,
@@ -152,7 +177,7 @@ def process_point_cloud(
     inside ``output_directory``.
     """
 
-    pcd = o3d.io.read_point_cloud(str(file_path))
+    pcd = _load_point_cloud(file_path)
     original_count = len(pcd.points)
     if original_count == 0:
         raise ValueError(f"Point cloud '{file_path}' contains no points")
@@ -176,7 +201,7 @@ def convert_to_ascii_ply(
 ) -> pathlib.Path:
     """Convert *source_path* to an ASCII `.ply` stored in *output_directory*."""
 
-    pcd = o3d.io.read_point_cloud(str(source_path))
+    pcd = _load_point_cloud(source_path)
     destination = output_directory / f"{source_path.stem}.ply"
     _ensure_ascii_ply(pcd, destination)
     return destination
@@ -223,7 +248,7 @@ def process_directory(
         try:
             process_point_cloud(file_path, output_dir, sampling_ratio, noise_ratio)
             stats.register_processed()
-            if convert_originals and file_path.suffix.lower() != ".ply":
+            if convert_originals and file_path.suffix.lower() not in {".ply", ".txt"}:
                 convert_to_ascii_ply(file_path, output_dir)
         except Exception as exc:  # pragma: no cover - defensive programming
             print(f"Skipping '{file_path}': {exc}")
