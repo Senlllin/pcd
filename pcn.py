@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PCN-style dataset builder for ShapeNet category 02691156."""
+"""PCN-style dataset builder with configurable category metadata."""
 import argparse
 import hashlib
 import json
@@ -12,8 +12,9 @@ import numpy as np
 import open3d as o3d
 
 
-CATEGORY_ID = "02691156"
-CATEGORY_NAME = "airplane"
+DEFAULT_INPUT_DIR = Path(r"C:\Users\zccy2\Desktop\1")
+DEFAULT_CATEGORY_ID = "02691156"
+DEFAULT_CATEGORY_NAME = "dougong"
 MIN_VALID_POINTS = 10
 MIN_PARTIAL_RATIO = 0.25
 
@@ -22,8 +23,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Build a PCN-style dataset with partial point clouds."
     )
-    parser.add_argument("--input_dir", required=True, type=Path,
-                        help="Directory containing raw point clouds (non-recursive).")
+    parser.add_argument(
+        "--input_dir",
+        type=Path,
+        default=DEFAULT_INPUT_DIR,
+        help="Directory containing raw point clouds (non-recursive).",
+    )
     parser.add_argument("--output_dir", required=True, type=Path,
                         help="Directory where the PCN dataset root will be created.")
     parser.add_argument("--exts", nargs="*", default=(".pcd", ".ply", ".xyz"),
@@ -34,6 +39,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=0, help="Random seed.")
     parser.add_argument("--num_partials", type=int, default=8,
                         help="Number of partial point clouds to generate per model.")
+    parser.add_argument(
+        "--recursive",
+        action="store_true",
+        default=False,
+        help="Recursively search for point clouds under the input directory.",
+    )
+    parser.add_argument("--category_id", default=DEFAULT_CATEGORY_ID,
+                        help="Identifier written to category.txt and metadata.")
+    parser.add_argument("--category_name", default=DEFAULT_CATEGORY_NAME,
+                        help="Category name written to category.txt and metadata.")
     return parser.parse_args()
 
 
@@ -235,13 +250,12 @@ def save_cloud(path: Path, pts: np.ndarray, out_ext: str) -> None:
         raise RuntimeError(f"Failed to write point cloud: {path}")
 
 
-def list_point_clouds(directory: Path, exts: Sequence[str]) -> List[Path]:
+def list_point_clouds(directory: Path, exts: Sequence[str], recursive: bool) -> List[Path]:
     normalized_exts = {ext.lower() if ext.startswith('.') else f'.{ext.lower()}' for ext in exts}
     files = []
-    for entry in sorted(directory.iterdir()):
-        if not entry.is_file():
-            continue
-        if entry.suffix.lower() in normalized_exts:
+    iterator = directory.rglob('*') if recursive else directory.iterdir()
+    for entry in sorted(iterator):
+        if entry.is_file() and entry.suffix.lower() in normalized_exts:
             files.append(entry)
     return files
 
@@ -255,6 +269,9 @@ def main() -> None:
     out_ext: str = args.out_ext
     seed: int = args.seed
     num_partials: int = args.num_partials
+    recursive: bool = args.recursive
+    category_id: str = args.category_id
+    category_name: str = args.category_name
 
     if num_partials <= 0:
         print("[WARN] num_partials must be positive; defaulting to 8.")
@@ -264,7 +281,7 @@ def main() -> None:
         print(f"Input directory does not exist: {input_dir}", file=sys.stderr)
         sys.exit(1)
 
-    files = list_point_clouds(input_dir, exts)
+    files = list_point_clouds(input_dir, exts, recursive)
     if not files:
         print(f"No input point clouds found in {input_dir} with extensions {exts}", file=sys.stderr)
 
@@ -297,10 +314,10 @@ def main() -> None:
 
     pcn_root = output_dir / "PCN"
     complete_root = {
-        split: pcn_root / split / "complete" / CATEGORY_ID for split in splits
+        split: pcn_root / split / "complete" / category_id for split in splits
     }
     partial_root = {
-        split: pcn_root / split / "partial" / CATEGORY_ID for split in splits
+        split: pcn_root / split / "partial" / category_id for split in splits
     }
 
     for path in complete_root.values():
@@ -331,11 +348,11 @@ def main() -> None:
     # category.txt
     category_txt_path = pcn_root / "category.txt"
     category_txt_path.parent.mkdir(parents=True, exist_ok=True)
-    category_txt_path.write_text(f"{CATEGORY_ID} {CATEGORY_NAME}\n", encoding="utf-8")
+    category_txt_path.write_text(f"{category_id} {category_name}\n", encoding="utf-8")
 
     # PCN.json summary
     summary = {
-        "category": {"id": CATEGORY_ID, "name": CATEGORY_NAME},
+        "category": {"id": category_id, "name": category_name},
         "seed": seed,
         "out_ext": out_ext,
         "num_partials": num_partials,
@@ -346,7 +363,7 @@ def main() -> None:
     json_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     print(f"Built PCN at {pcn_root}")
-    print(f"Category: {CATEGORY_ID}")
+    print(f"Category: {category_id} ({category_name})")
     print(
         "Splits: "
         f"train={len(split_model_ids['train'])}, "
