@@ -34,8 +34,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=0, help="Random seed.")
     parser.add_argument("--num_partials", type=int, default=8,
                         help="Number of partial point clouds to generate per model.")
-    parser.add_argument("--recursive", action="store_true",
-                        help="Recursively search for point clouds under the input directory.")
+    parser.add_argument(
+        "--recursive",
+        action="store_true",
+        default=False,
+        help="Recursively search for point clouds under the input directory.",
+    )
     parser.add_argument("--category_id", default=DEFAULT_CATEGORY_ID,
                         help="Identifier written to category.txt and metadata.")
     parser.add_argument("--category_name", default=DEFAULT_CATEGORY_NAME,
